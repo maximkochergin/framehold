@@ -3,7 +3,7 @@ import threading
 import unittest
 from contextlib import contextmanager
 
-from framehold_core import Controller, HIGH_PERFORMANCE, TweakError, legacy_to_snapshot, validate_snapshot
+from framehold_core import Controller, HIGH_PERFORMANCE, TweakError, validate_snapshot
 
 BALANCED = "381b4222-f694-41f0-9685-ff5bb260df2e"
 OWNER = "S-1-5-21-test"
@@ -78,9 +78,6 @@ class MemoryStore:
 
     def legacy_pending(self):
         return self.legacy
-
-    def import_legacy(self):
-        raise AssertionError("not used in these tests")
 
 
 class ControllerTests(unittest.TestCase):
@@ -174,18 +171,11 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaisesRegex(TweakError, "previous version"):
             self.controller.apply("balanced")
 
-    def test_legacy_snapshot_converts_without_losing_original_values(self):
-        legacy = {
-            "schema": 1, "created": "2026-09-25T00:00:00Z", "preset": "competitive",
-            "game_mode": {"changed": True, "existed": False, "value": None, "applied": 1},
-            "power_plan": {"changed": True, "original": BALANCED.upper(), "applied": HIGH_PERFORMANCE},
-        }
-        converted = legacy_to_snapshot(legacy, OWNER)
-        self.assertFalse(converted["game_mode"]["exists"])
-        self.assertEqual(converted["power_plan"]["original"], BALANCED)
-        legacy["power_plan"]["original"] = "invalid"
-        with self.assertRaises(TweakError):
-            legacy_to_snapshot(legacy, OWNER)
+    def test_legacy_state_blocks_restore_without_import(self):
+        self.store.legacy = True
+        with self.assertRaisesRegex(TweakError, "previous version"):
+            self.controller.restore()
+        self.assertIsNone(self.store.read())
 
 
 if __name__ == "__main__":

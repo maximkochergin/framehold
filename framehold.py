@@ -3,96 +3,69 @@
 from __future__ import annotations
 
 import argparse
-import ctypes
 import os
 import shutil
-import sys
 
 from framehold_core import Controller, HIGH_PERFORMANCE, TweakError, VERSION
 
-PALETTE = {
-    "muted": "\x1b[38;2;138;152;156m",
-    "sage": "\x1b[38;2;123;155;147m",
-    "sand": "\x1b[38;2;181;160;130m",
-}
-RESET = "\x1b[0m"
-
-
-def use_color() -> bool:
-    if os.name != "nt" or not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
-        return False
-    handle = ctypes.windll.kernel32.GetStdHandle(-11)
-    mode = ctypes.c_ulong()
-    if not ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-        return False
-    return bool(ctypes.windll.kernel32.SetConsoleMode(handle, mode.value | 0x0004))
-
-
-COLOR = use_color()
-
-
-def line(text: str = "", tone: str = ""):
-    if COLOR and tone in PALETTE:
-        print(PALETTE[tone] + text + RESET)
-    else:
-        print(text)
+def line(text: str = ""):
+    print(text)
 
 
 def header():
     line()
-    line("       /\\                /\\", "muted")
-    line("  ____/  \\____    _____/  \\____", "muted")
-    line(" /            " + chr(92) + "__/             " + chr(92), "muted")
-    line("    framehold", "sage")
-    line("    quiet tools for a steadier session", "muted")
-    line(f"    v{VERSION}", "muted")
+    line("       /\\                /\\")
+    line("  ____/  \\____    _____/  \\____")
+    line(" /            " + chr(92) + "__/             " + chr(92))
+    line("    framehold")
+    line("    quiet tools for a steadier session")
     line()
 
 
-def item(label: str, value: str, tone: str = ""):
-    line(f"    {label:<18} {value}", tone)
+def item(label: str, value: str):
+    line(f"    {label:<18} {value}")
 
 
 def show_status(controller: Controller):
     header()
-    line("    system", "sage")
+    line("    system")
     state = controller.status()
     item("power plan", state["plan"])
     item("game mode", state["game_mode"])
     item("fortnite", "running" if state["game_running"] else "not running")
     item("saved state", state["saved_state"])
     line()
-    line("    results depend on hardware, thermals and the game settings.", "muted")
+    line("    results depend on hardware, thermals and the game settings.")
     line()
 
 
 def show_preview(controller: Controller, preset: str):
     header()
-    line(f"    {preset} / preview", "sage")
+    line(f"    {preset} / preview")
     line()
     for value in controller.preview(preset):
         line("    " + value)
-    line("    restore         previous values are saved before changes", "muted")
+    line("    restore         previous values are saved before changes")
     line()
 
 
 def show_guide():
     header()
-    line("    in-game guide", "sage")
+    line("    in-game guide")
     line()
     line("    01  try the performance rendering mode, then restart the game")
     line("    02  compare textures and meshes on low against your current settings")
     line("    03  turn on the in-game fps counter and compare the same scene")
     line("    04  if pacing is uneven, test a stable frame-rate limit")
     line()
-    line("    choose these settings in fortnite; framehold leaves game files alone.", "muted")
+    line("    choose these settings in fortnite; framehold leaves game files alone.")
     line()
 
 
 def show_messages(messages: list[str]):
     line()
     for message in messages:
-        line("    " + message, "sand" if "skipped" in message or "elsewhere" in message else "sage")
+        line("    " + message)
     line()
 
 
@@ -113,13 +86,13 @@ def confirmed() -> bool:
 def show_menu(controller: Controller):
     header()
     if shutil.get_terminal_size((100, 30)).columns < 88:
-        line("    01   overview", "sage")
+        line("    01   overview")
         line("    02   balanced")
         line("    03   competitive")
         line("    04   restore")
         line("    05   focus game")
         line("    06   in-game guide")
-        line("    00   exit", "muted")
+        line("    00   exit")
         line()
         return
     state = controller.status()
@@ -136,8 +109,7 @@ def show_menu(controller: Controller):
         ("", "00   exit"),
     ]
     for left, right in rows:
-        tone = "sage" if left == "session / overview" else ("muted" if right == "00   exit" else "")
-        line(f"    {left:<39} {right}", tone)
+        line(f"    {left:<39} {right}")
     line()
 
 
@@ -162,9 +134,9 @@ def menu(controller: Controller):
             elif choice == "6":
                 show_guide()
             else:
-                line("    unknown choice", "sand")
+                line("    unknown choice")
         except (TweakError, OSError, ValueError) as error:
-            line("    " + str(error).lower(), "sand")
+            line("    " + str(error).lower())
         line()
         try:
             input("    enter to continue  ")
@@ -179,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version="framehold " + VERSION)
     args = parser.parse_args(argv)
     if os.name != "nt":
-        line("    framehold requires windows", "sand")
+        line("    framehold requires windows")
         return 1
     from framehold_windows import RegistryStore, WindowsBackend
 
@@ -203,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             show_guide()
         return 0
     except (TweakError, OSError, ValueError) as error:
-        line("    error: " + str(error).lower(), "sand")
+        line("    error: " + str(error).lower())
         return 1
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 HIGH_PERFORMANCE = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 GUID = re.compile(r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
 
@@ -42,31 +42,6 @@ def validate_snapshot(data: object, owner_sid: str) -> dict:
     return data
 
 
-def legacy_to_snapshot(legacy: object, owner_sid: str) -> dict:
-    if not isinstance(legacy, dict) or set(legacy) != {"schema", "created", "preset", "game_mode", "power_plan"}:
-        raise TweakError("old saved state has an invalid structure")
-    if type(legacy["schema"]) is not int or legacy["schema"] != 1 or legacy["preset"] not in ("balanced", "competitive"):
-        raise TweakError("old saved state has an invalid version or profile")
-    mode = legacy["game_mode"]
-    plan = legacy["power_plan"]
-    if not isinstance(mode, dict) or set(mode) != {"changed", "existed", "value", "applied"}:
-        raise TweakError("old saved game mode is invalid")
-    if not isinstance(plan, dict) or set(plan) != {"changed", "original", "applied"}:
-        raise TweakError("old saved power plan is invalid")
-    if type(mode["changed"]) is not bool or type(mode["existed"]) is not bool or type(plan["changed"]) is not bool:
-        raise TweakError("old saved state has invalid flags")
-    if type(mode["applied"]) is not int or mode["applied"] != 1 or plan["applied"] != HIGH_PERFORMANCE or not valid_guid(plan["original"]):
-        raise TweakError("old saved state has invalid targets")
-    state = {
-        "schema": 1, "owner_sid": owner_sid, "preset": legacy["preset"],
-        "game_mode": {"changed": mode["changed"], "exists": mode["existed"],
-                      "value": mode["value"], "kind": "dword" if mode["existed"] else None, "applied": 1},
-        "power_plan": {"changed": plan["changed"], "original": plan["original"].lower(),
-                       "applied": HIGH_PERFORMANCE},
-    }
-    return validate_snapshot(state, owner_sid)
-
-
 class Controller:
     def __init__(self, backend, store):
         self.backend = backend
@@ -75,7 +50,9 @@ class Controller:
     def status(self) -> dict:
         mode = self.backend.get_game_mode()
         try:
-            saved = "available" if self.store.read() is not None or self.store.legacy_pending() else "none"
+            saved = "available" if self.store.read() is not None else (
+                "legacy" if self.store.legacy_pending() else "none"
+            )
         except TweakError:
             saved = "invalid"
         return {
@@ -148,7 +125,7 @@ class Controller:
         with self.store.lock():
             self.backend.check_account()
             if self.store.read() is None and self.store.legacy_pending():
-                self.store.import_legacy()
+                raise TweakError("restore the previous version's saved profile first")
             return self._restore_locked()
 
     def _restore_locked(self) -> list[str]:

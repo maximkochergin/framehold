@@ -14,23 +14,33 @@ $source = Join-Path $root 'framehold.py'
 $output = Join-Path $root 'dist'
 if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) { throw 'icon is missing.' }
 
-& $Python -m unittest discover -s (Join-Path $root 'tests') -p 'test_*.py'
-if ($LASTEXITCODE -ne 0) { throw 'tests failed.' }
+$versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $root 'framehold_core.py') -Raw), '(?m)^VERSION = "(\d+\.\d+\.\d+)"\r?$')
+if (-not $versionMatch.Success) { throw 'cannot read the project version.' }
+$version = $versionMatch.Groups[1].Value
+$testScript = 'import sys, unittest; sys.path.insert(0, sys.argv[1]); suite = unittest.defaultTestLoader.discover(sys.argv[2], pattern="test_*.py"); result = unittest.TextTestRunner().run(suite); raise SystemExit(not result.wasSuccessful())'
 
-& $Python -m nuitka `
-    --onefile `
-    --zig `
-    --assume-yes-for-downloads `
-    --windows-uac-admin `
-    --windows-icon-from-ico=$icon `
-    --output-dir=$output `
-    --output-filename=framehold.exe `
-    --product-name=framehold `
-    --product-version=0.2.0 `
-    --file-version=0.2.0.0 `
-    --file-description='framehold - fortnite session utility' `
-    $source
-if ($LASTEXITCODE -ne 0) { throw 'nuitka build failed.' }
+Push-Location -LiteralPath $root
+try {
+    & $Python -I -c $testScript $root (Join-Path $root 'tests')
+    if ($LASTEXITCODE -ne 0) { throw 'tests failed.' }
+
+    & $Python -I -m nuitka `
+        --onefile `
+        --zig `
+        --windows-uac-admin `
+        --windows-icon-from-ico=$icon `
+        --output-dir=$output `
+        --output-filename=framehold.exe `
+        --product-name=framehold `
+        --product-version=$version `
+        --file-version="${version}.0" `
+        --file-description='framehold - fortnite session utility' `
+        $source
+    if ($LASTEXITCODE -ne 0) { throw 'nuitka build failed.' }
+}
+finally {
+    Pop-Location
+}
 
 $binary = Join-Path $output 'framehold.exe'
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'build finished without an exe.' }

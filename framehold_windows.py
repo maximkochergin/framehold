@@ -11,7 +11,7 @@ import winreg
 from contextlib import contextmanager
 from ctypes import wintypes as wt
 
-from framehold_core import TweakError, legacy_to_snapshot, valid_guid, validate_snapshot
+from framehold_core import TweakError, valid_guid, validate_snapshot
 
 kernel32 = ct.WinDLL("kernel32", use_last_error=True)
 advapi32 = ct.WinDLL("advapi32", use_last_error=True)
@@ -157,10 +157,13 @@ class WindowsBackend:
             raise TweakError("this elevated window belongs to another account; sign in with your own admin account")
 
     def _power(self, command: str, *args: str) -> str:
-        result = subprocess.run(
-            [self.powercfg, command, *args], capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
-        )
+        try:
+            result = subprocess.run(
+                [self.powercfg, command, *args], capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise TweakError("windows power settings did not respond in time") from error
         if result.returncode:
             raise TweakError(f"windows rejected powercfg {command}")
         return result.stdout
@@ -225,6 +228,17 @@ class WindowsBackend:
                 if not path.endswith("\\fortnitegame\\binaries\\win64\\" + GAME_EXE):
                     messages.append(f"process {pid}: not a fortnite install; skipped")
                     continue
+                if _session_id(pid) != _session_id(kernel32.GetCurrentProcessId()):
+                    messages.append(f"process {pid}: another session; skipped")
+                    continue
+                try:
+                    target_sid = _sid_for_handle(handle)
+                except OSError:
+                    messages.append(f"process {pid}: owner could not be checked; skipped")
+                    continue
+                if target_sid != self.owner_sid:
+                    messages.append(f"process {pid}: another account; skipped")
+                    continue
                 if kernel32.GetPriorityClass(handle) == ABOVE_NORMAL_PRIORITY_CLASS:
                     messages.append(f"process {pid}: already above normal")
                     continue
@@ -282,21 +296,10 @@ class RegistryStore:
         return os.path.isfile(self._legacy_path())
 
     def _legacy_path(self) -> str:
-        return os.path.join(os.environ.get("LOCALAPPDATA", ""), "fortnite-tweaker", "snapshot.json")
-
-    def import_legacy(self) -> bool:
-        if not self.legacy_pending():
-            return False
-        try:
-            with open(self._legacy_path(), "r", encoding="utf-8-sig") as source:
-                legacy = json.load(source)
-        except (OSError, ValueError) as error:
-            raise TweakError("old saved state is unreadable; inspect the legacy snapshot") from error
-        state = legacy_to_snapshot(legacy, self.owner_sid)
-        self.save_new(state)
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, self.path, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, "legacy_resolved", 0, winreg.REG_DWORD, 1)
-        return True
+        local_appdata = os.environ.get("LOCALAPPDATA")
+        if not local_appdata or not os.path.isabs(local_appdata):
+            raise TweakError("cannot locate local appdata for legacy state check")
+        return os.path.join(local_appdata, "fortnite-tweaker", "snapshot.json")
 
     def save_new(self, data: dict):
         validate_snapshot(data, self.owner_sid)
