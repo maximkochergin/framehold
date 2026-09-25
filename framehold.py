@@ -32,6 +32,7 @@ def show_status(controller: Controller):
     state = controller.status()
     item("power plan", state["plan"])
     item("game mode", state["game_mode"])
+    item("capture", state["capture"])
     item("fortnite", "running" if state["game_running"] else "not running")
     item("saved state", state["saved_state"])
     line()
@@ -39,26 +40,13 @@ def show_status(controller: Controller):
     line()
 
 
-def show_preview(controller: Controller, preset: str):
+def show_preview(controller: Controller, preset: str, features: set[str] | None = None, game_exe: str | None = None):
     header()
     line(f"    {preset} / preview")
     line()
-    for value in controller.preview(preset):
+    for value in controller.preview(preset, features, game_exe):
         line("    " + value)
     line("    restore         previous values are saved before changes")
-    line()
-
-
-def show_guide():
-    header()
-    line("    in-game guide")
-    line()
-    line("    01  try the performance rendering mode, then restart the game")
-    line("    02  compare textures and meshes on low against your current settings")
-    line("    03  turn on the in-game fps counter and compare the same scene")
-    line("    04  if pacing is uneven, test a stable frame-rate limit")
-    line()
-    line("    choose these settings in fortnite; framehold leaves game files alone.")
     line()
 
 
@@ -91,7 +79,7 @@ def show_menu(controller: Controller):
         line("    03   competitive")
         line("    04   restore")
         line("    05   focus game")
-        line("    06   in-game guide")
+        line("    06   custom controls")
         line("    00   exit")
         line()
         return
@@ -102,10 +90,10 @@ def show_menu(controller: Controller):
         ("", ""),
         (f"power plan   {plan}", "01   overview"),
         (f"game mode    {state['game_mode']}", "02   balanced"),
-        (f"fortnite     {'running' if state['game_running'] else 'not running'}", "03   competitive"),
-        (f"saved state  {state['saved_state']}", "04   restore"),
-        ("", "05   focus game"),
-        ("", "06   in-game guide"),
+        (f"capture      {state['capture']}", "03   competitive"),
+        (f"fortnite     {'running' if state['game_running'] else 'not running'}", "04   restore"),
+        (f"saved state  {state['saved_state']}", "05   focus game"),
+        ("", "06   custom controls"),
         ("", "00   exit"),
     ]
     for left, right in rows:
@@ -132,7 +120,16 @@ def menu(controller: Controller):
             elif choice == "5":
                 show_messages(controller.backend.focus_game())
             elif choice == "6":
-                show_guide()
+                line("    controls: game-mode, capture, power, gpu")
+                try:
+                    raw = input("    select (comma separated)  ").strip().lower()
+                    features = {part.strip() for part in raw.split(",")}
+                    path = input("    fortnite exe path (enter to detect)  ").strip() if "gpu" in features else None
+                except EOFError:
+                    return
+                show_preview(controller, "competitive", features, path or None)
+                if confirmed():
+                    show_messages(controller.apply("competitive", features, path or None))
             else:
                 line("    unknown choice")
         except (TweakError, OSError, ValueError) as error:
@@ -146,10 +143,13 @@ def menu(controller: Controller):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="framehold", description="quiet tools for a steadier fortnite session")
-    parser.add_argument("--action", choices=("menu", "status", "preview", "apply", "restore", "focus", "guide"), default="menu")
+    parser.add_argument("--action", choices=("menu", "status", "preview", "apply", "restore", "focus"), default="menu")
     parser.add_argument("--preset", choices=("balanced", "competitive"), default="balanced")
+    parser.add_argument("--features", metavar="controls", help="comma-separated controls: game-mode,capture,power,gpu")
+    parser.add_argument("--game-exe", metavar="path", help="full fortnite executable path for the gpu control")
     parser.add_argument("--version", action="version", version="framehold " + VERSION)
     args = parser.parse_args(argv)
+    features = {part.strip() for part in args.features.lower().split(",")} if args.features else None
     if os.name != "nt":
         line("    framehold requires windows")
         return 1
@@ -163,16 +163,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "status":
             show_status(controller)
         elif args.action == "preview":
-            show_preview(controller, args.preset)
+            show_preview(controller, args.preset, features, args.game_exe)
         elif args.action == "apply":
-            show_preview(controller, args.preset)
-            show_messages(controller.apply(args.preset))
+            show_preview(controller, args.preset, features, args.game_exe)
+            show_messages(controller.apply(args.preset, features, args.game_exe))
         elif args.action == "restore":
             show_messages(controller.restore())
         elif args.action == "focus":
             show_messages(backend.focus_game())
-        else:
-            show_guide()
         return 0
     except (TweakError, OSError, ValueError) as error:
         line("    error: " + str(error).lower())

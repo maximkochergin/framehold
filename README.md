@@ -4,18 +4,19 @@ quiet session controls for fortnite on windows.
 
 ![framehold running in cmd](assets/cmd.png)
 
-framehold shows the current power plan, game mode, game process, and saved state in a small terminal interface. it applies a profile only after showing the planned changes and keeps the original settings for restore.
+framehold shows the current power plan, game mode, game process, and saved state in a small terminal interface. each change is previewed and the original values are saved for restore. fortnite's files and in-game settings, including render scale, are never edited.
 
 ## actions
 
 | action | effect |
 | --- | --- |
-| `balanced` | turns on game mode and keeps the current power plan |
-| `competitive` | turns on game mode and selects high performance when available |
+| `balanced` | enables game mode and disables background game capture for this account |
+| `competitive` | applies balanced controls and activates high performance power; creates a temporary plan if needed |
+| `custom controls` | choose any combination of game mode, capture, power, and per-app gpu preference |
 | `focus game` | sets the current account's running fortnite process to above normal priority until it exits |
-| `restore` | restores saved values while leaving external changes alone |
+| `restore` | restores saved values and removes a temporary power plan; external changes are kept |
 
-the in-game guide suggests settings to compare inside fortnite. framehold does not edit game files, install drivers, or change windows boot settings. performance depends on the pc, thermals, and game settings.
+the gpu control uses windows' per-app graphics preference. launch fortnite first for automatic executable detection, or supply its full path. relaunch the game after changing that preference. windows and the graphics driver determine the actual gpu used. framehold does not install drivers or change boot settings.
 
 ## get started
 
@@ -26,9 +27,11 @@ open the executable for the menu, or use a direct action:
 ```text
 framehold.exe --action status
 framehold.exe --action restore
+framehold.exe --action preview --preset competitive
+framehold.exe --action apply --features capture,gpu --game-exe "c:\path\to\fortnitegame\binaries\win64\fortniteclient-win64-shipping.exe"
 ```
 
-`competitive` may increase power use and heat. use `restore` to return to the saved values. snapshots are stored under `hklm\software\framehold\state` for the executing account. an incomplete restore keeps its snapshot for another attempt.
+`competitive` may increase power use and heat. only one saved session can be active at a time. use `restore` to return to the saved values. snapshots are stored under `hklm\software\framehold\state` for the executing account. an incomplete restore keeps its snapshot for another attempt. framehold does not promise a fixed fps gain; compare the same scene before and after changing a control.
 
 if an older version left `%localappdata%\fortnite-tweaker\snapshot.json`, restore it with the version that created it before using this release. framehold does not import that writable file.
 
@@ -37,3 +40,7 @@ if an older version left `%localappdata%\fortnite-tweaker\snapshot.json`, restor
 on windows, install python 3.14 and nuitka, then run `pwsh -file .\build.ps1 -python <path-to-python.exe>`. the script runs tests before building `dist\framehold.exe` and prints its sha-256. running `python framehold.py` from source is also supported.
 
 framehold is an independent project and is not affiliated with epic games.
+
+## references
+
+controls are based on [epic's pc guidance](https://www.epicgames.com/help/c-34254770/c-38015632/a25544495), [microsoft's powercfg reference](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options), and the [atlas game capture configuration](https://github.com/Atlas-OS/Atlas/blob/main/src/playbook/Configuration/tweaks/performance/disable-game-bar.yml). framehold implements a small, reversible subset.

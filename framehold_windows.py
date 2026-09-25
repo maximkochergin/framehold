@@ -7,11 +7,12 @@ import json
 import os
 import re
 import subprocess
+import uuid
 import winreg
 from contextlib import contextmanager
 from ctypes import wintypes as wt
 
-from framehold_core import TweakError, valid_guid, validate_snapshot
+from framehold_core import HIGH_PERFORMANCE, TweakError, valid_guid, validate_snapshot
 
 kernel32 = ct.WinDLL("kernel32", use_last_error=True)
 advapi32 = ct.WinDLL("advapi32", use_last_error=True)
@@ -21,6 +22,8 @@ GAME_MODE_PATH = r"Software\Microsoft\GameBar"
 GAME_MODE_NAME = "AutoGameModeEnabled"
 STATE_ROOT = r"Software\framehold\state"
 GAME_EXE = "fortniteclient-win64-shipping.exe"
+CAPTURE_VALUES = ((r"System\GameConfigStore", "GameDVR_Enabled"), (r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"))
+GPU_PATH = r"Software\Microsoft\DirectX\UserGpuPreferences"
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_SET_INFORMATION = 0x0200
 TOKEN_QUERY = 0x0008
@@ -185,6 +188,88 @@ class WindowsBackend:
         self._power("/setactive", guid)
         if self.get_active_plan() != guid.lower():
             raise TweakError("windows did not activate the requested power plan")
+
+    def new_guid(self) -> str:
+        return str(uuid.uuid4())
+
+    def create_high_performance_plan(self, guid: str):
+        if not valid_guid(guid) or self.has_plan(guid):
+            raise TweakError("temporary power plan id is invalid or already used")
+        self._power("/duplicatescheme", HIGH_PERFORMANCE, guid)
+        if not self.has_plan(guid):
+            raise TweakError("windows did not create the high performance plan")
+
+    def delete_plan(self, guid: str):
+        if not valid_guid(guid) or guid == HIGH_PERFORMANCE or self.get_active_plan() == guid:
+            raise TweakError("cannot remove an active or built-in power plan")
+        self._power("/delete", guid)
+
+    def _get_value(self, path: str, name: str, expected_kind: int) -> dict:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_READ) as key:
+                value, kind = winreg.QueryValueEx(key, name)
+        except FileNotFoundError:
+            return {"exists": False, "value": None, "kind": None}
+        return {"exists": True, "value": value, "kind": "dword" if kind == winreg.REG_DWORD and kind == expected_kind else "string" if kind == winreg.REG_SZ and kind == expected_kind else "other"}
+
+    def get_capture(self) -> list[dict]:
+        return [self._get_value(path, name, winreg.REG_DWORD) for path, name in CAPTURE_VALUES]
+
+    def set_capture_one(self, index: int, value: int):
+        if index not in (0, 1) or value not in (0, 1):
+            raise TweakError("invalid capture setting")
+        path, name = CAPTURE_VALUES[index]
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, value)
+
+    def set_capture(self, value: int):
+        for index in (0, 1):
+            self.set_capture_one(index, value)
+
+    def remove_capture_one(self, index: int):
+        path, name = CAPTURE_VALUES[index]
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.DeleteValue(key, name)
+        except FileNotFoundError:
+            pass
+
+    def resolve_game_exe(self, supplied: str | None) -> str:
+        paths = [supplied] if supplied else []
+        if not paths:
+            for pid in self.find_game():
+                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                if not handle:
+                    continue
+                try:
+                    buffer = ct.create_unicode_buffer(32768)
+                    size = wt.DWORD(len(buffer))
+                    if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ct.byref(size)):
+                        paths.append(buffer.value)
+                finally:
+                    _close(handle)
+        for path in paths:
+            if path and os.path.isabs(path) and os.path.isfile(path) and os.path.normpath(path).lower().endswith("\\fortnitegame\\binaries\\win64\\" + GAME_EXE):
+                return os.path.normpath(path)
+        raise TweakError("fortnite executable not found; run the game or provide its full path")
+
+    def get_gpu(self, path: str) -> dict:
+        return self._get_value(GPU_PATH, path, winreg.REG_SZ)
+
+    @staticmethod
+    def high_performance_gpu_value(current: str) -> str:
+        parts = [part for part in current.split(";") if part and not part.strip().lower().startswith("gpupreference=")]
+        return "GpuPreference=2;" + (";".join(parts) + ";" if parts else "")
+
+    def set_gpu(self, path: str, value: str):
+        if not os.path.isabs(path) or not os.path.normpath(path).lower().endswith("\\fortnitegame\\binaries\\win64\\" + GAME_EXE):
+            raise TweakError("invalid fortnite executable path")
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, GPU_PATH, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, path, 0, winreg.REG_SZ, value)
+
+    def remove_gpu(self, path: str):
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, GPU_PATH, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, path)
 
     def get_game_mode(self) -> dict:
         try:
