@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">framehold — terminal session utility</title>
+  <desc id="desc">a minimal dark terminal window showing the framehold interface, system status and performance profiles against a quiet charcoal landscape.</desc>
+  <defs>
+    <radialGradient id="ground" cx="50%" cy="42%" r="76%">
+      <stop offset="0" stop-color="#213331"/>
+      <stop offset=".52" stop-color="#182529"/>
+      <stop offset="1" stop-color="#10191d"/>
+    </radialGradient>
+    <linearGradient id="window" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#19262a"/>
+      <stop offset="1" stop-color="#111a1e"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#729a91" stop-opacity=".17"/>
+      <stop offset="1" stop-color="#729a91" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-15%" y="-24%" width="130%" height="155%">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+    <pattern id="grain" width="7" height="7" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r=".35" fill="#c9ddd6" opacity=".15"/>
+    </pattern>
+    <clipPath id="screen"><rect x="129" y="143" width="1342" height="620" rx="18"/></clipPath>
+    <style>
+      .sans { font-family: "Segoe UI", "Inter", Arial, sans-serif; }
+      .mono { font-family: "Cascadia Code", "Consolas", "DejaVu Sans Mono", monospace; }
+      .soft { fill: #899b9c; }
+      .body { fill: #d8e2dd; }
+      .accent { fill: #91b4a8; }
+      .sand { fill: #c4ad89; }
+      .rule { stroke: #3a4c4c; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#ground)"/>
+  <rect width="1600" height="900" fill="url(#grain)" opacity=".18"/>
+  <ellipse cx="820" cy="446" rx="700" ry="350" fill="url(#glow)"/>
+
+  <g fill="none" stroke="#6e8d86" stroke-width="1.2" opacity=".18">
+    <path d="M0 735 124 689 218 721 312 667 413 699 522 639 665 704 816 621 967 691 1106 625 1226 686 1364 636 1487 704 1600 665"/>
+    <path d="M0 779 112 739 232 756 315 713 445 744 535 695 671 749 821 685 972 742 1105 680 1220 736 1363 694 1490 746 1600 716"/>
+    <path d="M0 818 151 788 293 800 447 767 564 794 697 752 827 787 971 754 1101 785 1266 750 1435 796 1600 772"/>
+  </g>
+
+  <g class="sans">
+    <path d="M130 70h22l10-10 10 10h22" fill="none" stroke="#91b4a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="212" y="78" fill="#dce6e0" font-size="27" font-weight="600" letter-spacing=".9">framehold</text>
+    <text x="1472" y="76" fill="#91a19f" font-size="14" text-anchor="end" letter-spacing="2.5">session utility / windows</text>
+  </g>
+
+  <rect x="117" y="155" width="1366" height="630" rx="24" fill="#050b0d" opacity=".48" filter="url(#shadow)"/>
+  <rect x="128" y="142" width="1344" height="622" rx="19" fill="url(#window)" stroke="#506260" stroke-width="1.4"/>
+  <g clip-path="url(#screen)">
+    <rect x="129" y="143" width="1342" height="61" fill="#202d30"/>
+    <path d="M129 203H1471" class="rule"/>
+    <g fill="#778f8d">
+      <circle cx="168" cy="173" r="6"/>
+      <circle cx="191" cy="173" r="6" opacity=".64"/>
+      <circle cx="214" cy="173" r="6" opacity=".4"/>
+    </g>
+    <text x="800" y="180" text-anchor="middle" class="mono soft" font-size="17">framehold  /  terminal</text>
+    <text x="1422" y="179" text-anchor="end" class="mono soft" font-size="14">v0.2.0</text>
+
+    <g class="mono" font-size="21" letter-spacing="-.5" fill="#82a69c">
+      <text x="205" y="266">&#160;&#160;&#160;&#160;&#160;&#160;&#160;/\&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;/\</text>
+      <text x="205" y="291">&#160;&#160;____/&#160;&#160;\____&#160;&#160;&#160;&#160;_____/&#160;&#160;\____</text>
+      <text x="205" y="316">&#160;/&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;\__/&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;\</text>
+    </g>
+    <text x="829" y="278" class="sans body" font-size="46" font-weight="600" letter-spacing="-1.3">framehold</text>
+    <text x="830" y="312" class="mono soft" font-size="17">quiet tools for a steadier session</text>
+    <path d="M205 360H1393" class="rule"/>
+
+    <text x="205" y="410" class="mono accent" font-size="17" letter-spacing="1.2">session / overview</text>
+    <text x="829" y="410" class="mono accent" font-size="17" letter-spacing="1.2">menu / actions</text>
+    <path d="M783 387V646" class="rule"/>
+
+    <g class="mono" font-size="20">
+      <text x="205" y="459" class="soft">power plan</text>
+      <text x="502" y="459" class="body">balanced</text>
+      <text x="205" y="505" class="soft">game mode</text>
+      <text x="502" y="505" class="accent">on</text>
+      <text x="205" y="551" class="soft">fortnite</text>
+      <text x="502" y="551" class="body">running</text>
+      <text x="205" y="597" class="soft">saved state</text>
+      <text x="502" y="597" class="sand">available</text>
+    </g>
+
+    <g class="mono" font-size="20">
+      <text x="829" y="459" class="sand">01</text>
+      <text x="889" y="459" class="body">overview</text>
+      <text x="1212" y="459" class="soft" font-size="15">system status</text>
+      <text x="829" y="505" class="sand">02</text>
+      <text x="889" y="505" class="body">balanced</text>
+      <text x="1212" y="505" class="soft" font-size="15">daily play</text>
+      <text x="829" y="551" class="sand">03</text>
+      <text x="889" y="551" class="body">competitive</text>
+      <text x="1212" y="551" class="soft" font-size="15">power plan</text>
+      <text x="829" y="597" class="sand">04</text>
+      <text x="889" y="597" class="body">restore</text>
+    </g>
+
+    <path d="M205 647H1393" class="rule"/>
+    <text x="205" y="698" class="mono accent" font-size="23">›</text>
+    <text x="239" y="698" class="mono body" font-size="20">choose an action</text>
+    <rect x="459" y="678" width="11" height="23" fill="#91b4a8" opacity=".8"/>
+    <text x="1392" y="698" text-anchor="end" class="mono soft" font-size="15">preview before applying</text>
+  </g>
+
+  <g class="sans">
+    <text x="130" y="824" fill="#b6c6bf" font-size="18" letter-spacing=".2">measured changes. steady sessions.</text>
+    <text x="1471" y="824" fill="#78928d" font-size="14" text-anchor="end" letter-spacing="2.5">framehold / fortnite</text>
+  </g>
+</svg>
