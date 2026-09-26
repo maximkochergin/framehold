@@ -1,46 +1,67 @@
 # framehold
 
-quiet session controls for fortnite on windows.
+windows session diagnostics and reversible controls for fortnite.
 
-![framehold running in cmd](assets/cmd.png)
+![framehold in cmd](assets/cmd.png)
 
-framehold shows the current power plan, game mode, game process, and saved state in a small terminal interface. each change is previewed and the original values are saved for restore. fortnite's files and in-game settings, including render scale, are never edited.
+## what it does
 
-## actions
+start with **scan my pc**. framehold reads the installed gpu and driver versions, input devices, memory, storage health, active network adapters and error counters, selected services, and resource-heavy or overlay processes. findings are tied to the machine being scanned. the **input lag** page separates device polling, the render queue, display timing, and network delay; it can measure icmp latency to an epic test host. an icmp result is not an in-game latency measurement. the scan cannot infer temperature from hardware without a supported sensor interface or prove that an installed driver is the latest release.
 
-| action | effect |
+**benchmark** reads a fortnite csv exported by [presentmon](https://github.com/GameTechDev/PresentMon/blob/main/README-ConsoleApplication.md) and reports average fps, median/p95/p99 frame time, and cpu/gpu busy time when present. run the same scene before and after one control. framehold reads the csv; it does not run or modify presentmon.
+
+the **tune** page lets you combine individual controls. each one shows its mechanism before applying:
+
+| control | mechanism and limit |
 | --- | --- |
-| `balanced` | enables game mode and disables background game capture for this account |
-| `competitive` | applies balanced controls and activates high performance power; creates a temporary plan if needed |
-| `custom controls` | choose any combination of game mode, capture, power, and per-app gpu preference |
-| `focus game` | sets the current account's running fortnite process to above normal priority until it exits |
-| `restore` | restores saved values and removes a temporary power plan; external changes are kept |
+| game mode | asks windows to reduce background interference during games; no fixed fps gain |
+| background capture | disables two per-user game recording settings, avoiding recording work when it would otherwise run |
+| power plan | selects high performance or creates a temporary copy; may reduce power-saving stalls while increasing heat and battery use |
+| graphics preference | requests the high performance gpu for fortnite in windows; useful on hybrid laptops, subject to driver routing |
+| cpu scheduler / test | sets the mmcss low-priority cpu reserve to 10%; can matter only for threads that register with mmcss and may affect background audio; reboot to test |
+| focus game | sets the verified running fortnite process to above-normal cpu priority until it exits |
 
-the gpu control uses windows' per-app graphics preference. launch fortnite first for automatic executable detection, or supply its full path. relaunch the game after changing that preference. windows and the graphics driver determine the actual gpu used. framehold does not install drivers or change boot settings.
+framehold does not change fortnite files, visual settings, resolution, or render scale. it does not inject into the game or modify anti-cheat components. it never writes nvidia driver profiles, so nvidia profile inspector and other driver tools keep control of those settings.
 
-## get started
+## backups and restore
 
-download `framehold.exe` and its checksum from the [latest release](https://github.com/maximkochergin/framehold/releases/latest). verify the sha-256 before running the executable. it requests administrator rights; the app stops changes when elevation belongs to a different signed-in account. nuitka packaging does not digitally sign the file or guarantee a particular antivirus result.
+the default is a saved restore point before any persistent change. choose **restore** to put original values back; changes made by another tool after framehold applied its values are left alone. only one saved session can be active at once.
 
-open the executable for the menu, or use a direct action:
+you can decline a retained backup for each application. framehold warns and requires an additional confirmation every time. it still keeps a temporary transaction record while applying, so a failed change can roll back. after a successful no-backup application, one-click restore is unavailable.
+
+## use
+
+download `framehold.exe` and `sha256sums.txt` from the [latest release](https://github.com/maximkochergin/framehold/releases/latest). compare the exe's sha-256 with the checksum file before running. the executable requests administrator rights and checks that elevation belongs to the signed-in account. nuitka packaging does not sign the binary or guarantee an antivirus result.
+
+open the exe for the menu. direct actions are also available:
 
 ```text
-framehold.exe --action status
+framehold.exe --action scan
+framehold.exe --action latency --region eu
+framehold.exe --action benchmark --csv "c:\captures\fortnite.csv"
+framehold.exe --action preview --features capture,gpu --game-exe "c:\path\to\fortnitegame\binaries\win64\fortniteclient-win64-shipping.exe"
+framehold.exe --action apply --features capture,power
 framehold.exe --action restore
-framehold.exe --action preview --preset competitive
-framehold.exe --action apply --features capture,gpu --game-exe "c:\path\to\fortnitegame\binaries\win64\fortniteclient-win64-shipping.exe"
 ```
 
-`competitive` may increase power use and heat. only one saved session can be active at a time. use `restore` to return to the saved values. snapshots are stored under `hklm\software\framehold\state` for the executing account. an incomplete restore keeps its snapshot for another attempt. framehold does not promise a fixed fps gain; compare the same scene before and after changing a control.
+for an application without a retained restore point, add `--no-backup --accept-no-backup`. this warning and acknowledgment are required on each run. `mmcss` is an experimental opt-in control and is never included in a preset.
 
-if an older version left `%localappdata%\fortnite-tweaker\snapshot.json`, restore it with the version that created it before using this release. framehold does not import that writable file.
+## why some popular tweaks are absent
 
-## build from source
+the mmcss `gpu priority` registry value is [documented by microsoft as unused](https://learn.microsoft.com/en-us/windows/win32/procthread/multimedia-class-scheduler-service). values below 10 for `systemresponsiveness` are clamped, so a common `0` recipe does not mean zero cpu reserve. global timer hacks, broad service disabling, and blanket tcp registry changes have no established fortnite fps or input-lag benefit and can destabilize a pc. nvidia notes that [reflex overrides driver ultra low latency](https://www.nvidia.com/en-us/geforce/guides/gfecnt/202010/system-latency-optimization-guide/) when both are enabled; framehold leaves those settings to the game and driver tools.
 
-on windows, install python 3.14 and nuitka, then run `pwsh -file .\build.ps1 -python <path-to-python.exe>`. the script runs tests before building `dist\framehold.exe` and prints its sha-256. running `python framehold.py` from source is also supported.
+the current controls were reviewed against [epic's pc guidance](https://www.epicgames.com/help/c-34254770/c-38015632/a25544495), [microsoft's mmcss documentation](https://learn.microsoft.com/en-us/windows/win32/procthread/multimedia-class-scheduler-service), and the [nvidia latency guide](https://www.nvidia.com/en-us/geforce/guides/gfecnt/202010/system-latency-optimization-guide/) in september 2026. driver and game behavior can change; measure frame times and latency before trusting any gain.
 
-framehold is an independent project and is not affiliated with epic games.
+## build
 
-## references
+on windows, install python 3.14 and nuitka, then run `pwsh -file .\build.ps1 -python <path-to-python.exe>`. the script runs the tests, builds `dist\framehold.exe`, and prints its sha-256.
 
-controls are based on [epic's pc guidance](https://www.epicgames.com/help/c-34254770/c-38015632/a25544495), [microsoft's powercfg reference](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options), and the [atlas game capture configuration](https://github.com/Atlas-OS/Atlas/blob/main/src/playbook/Configuration/tweaks/performance/disable-game-bar.yml). framehold implements a small, reversible subset.
+## faq
+
+**who owns framehold?** owned and maintained by maximkochergin. the project is independent of epic games, microsoft, and nvidia.
+
+**will it guarantee more fps?** no. gains depend on the actual bottleneck, hardware, drivers, thermals, and the game. compare the same scene before and after a single control.
+
+**will it change my game graphics?** no. framehold does not read or write fortnite configuration files.
+
+**is it compatible with nvidia profile inspector?** framehold does not import, reset, or write `.nip` files or nvidia driver profiles. use that application's own export feature before changing driver profiles there.

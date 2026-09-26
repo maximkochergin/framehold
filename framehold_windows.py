@@ -24,6 +24,9 @@ STATE_ROOT = r"Software\framehold\state"
 GAME_EXE = "fortniteclient-win64-shipping.exe"
 CAPTURE_VALUES = ((r"System\GameConfigStore", "GameDVR_Enabled"), (r"Software\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled"))
 GPU_PATH = r"Software\Microsoft\DirectX\UserGpuPreferences"
+MMCSS_PATH = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
+MMCSS_NAME = "SystemResponsiveness"
+HAGS_PATH = r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers"
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_SET_INFORMATION = 0x0200
 TOKEN_QUERY = 0x0008
@@ -214,6 +217,34 @@ class WindowsBackend:
 
     def get_capture(self) -> list[dict]:
         return [self._get_value(path, name, winreg.REG_DWORD) for path, name in CAPTURE_VALUES]
+
+    def get_mmcss(self) -> dict:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, MMCSS_PATH, 0, winreg.KEY_READ) as key:
+                value, kind = winreg.QueryValueEx(key, MMCSS_NAME)
+        except FileNotFoundError:
+            return {"exists": False, "value": None, "kind": None}
+        return {"exists": True, "value": value, "kind": "dword" if kind == winreg.REG_DWORD else "other"}
+
+    def get_hags(self) -> str:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, HAGS_PATH, 0, winreg.KEY_READ) as key:
+                value, kind = winreg.QueryValueEx(key, "HwSchMode")
+        except FileNotFoundError:
+            return "system default or unsupported"
+        if kind != winreg.REG_DWORD:
+            return "unknown"
+        return {1: "off", 2: "on"}.get(value, "system default or unsupported")
+
+    def set_mmcss(self, value: int):
+        if type(value) is not int or not 10 <= value <= 100:
+            raise TweakError("invalid scheduler reserve")
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, MMCSS_PATH, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, MMCSS_NAME, 0, winreg.REG_DWORD, value)
+
+    def remove_mmcss(self):
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, MMCSS_PATH, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, MMCSS_NAME)
 
     def set_capture_one(self, index: int, value: int):
         if index not in (0, 1) or value not in (0, 1):

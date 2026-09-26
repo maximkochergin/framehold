@@ -1,179 +1,295 @@
-"""framehold: a focused Windows terminal companion for Fortnite."""
+"""framehold terminal interface."""
 
 from __future__ import annotations
 
 import argparse
 import os
-import shutil
+import subprocess
+import textwrap
 
-from framehold_core import Controller, HIGH_PERFORMANCE, TweakError, VERSION
+from framehold_core import Controller, TweakError, VERSION
 
-def line(text: str = ""):
-    print(text)
-
-
-def header():
-    line()
-    line("       /\\                /\\")
-    line("  ____/  \\____    _____/  \\____")
-    line(" /            " + chr(92) + "__/             " + chr(92))
-    line("    framehold")
-    line("    quiet tools for a steadier session")
-    line()
+CONTROLS = (
+    ("game-mode", "game mode", "asks windows to prioritize the game over background activity; no fixed fps gain"),
+    ("capture", "background capture", "stops windows game recording; may free cpu, gpu and disk bandwidth"),
+    ("power", "power plan", "uses high performance power; may reduce power-saving stalls but increases heat"),
+    ("gpu", "graphics preference", "requests the high performance gpu for fortnite on hybrid laptops"),
+    ("mmcss", "cpu scheduler / test", "sets the mmcss low-priority cpu reserve to 10%; conditional effect; may hurt background audio; reboot"),
+)
 
 
-def item(label: str, value: str):
-    line(f"    {label:<18} {value}")
+def say(text: str = "", indent: str = "  "):
+    for line in textwrap.wrap(str(text).lower(), width=66, break_long_words=False, break_on_hyphens=False) or [""]:
+        print(indent + line)
 
 
-def show_status(controller: Controller):
-    header()
-    line("    system")
+def header(section: str):
+    print(f"\n  framehold / {section:<42} {VERSION}")
+    print()
+
+
+def ask(prompt: str = "choose") -> str:
+    try:
+        return input(f"  {prompt} > ").strip().lower()
+    except EOFError:
+        return "0"
+
+
+def ask_path(prompt: str) -> str:
+    try:
+        return input(f"  {prompt} > ").strip().strip('"')
+    except EOFError:
+        return ""
+
+
+def pause():
+    try:
+        input("  enter to continue  ")
+    except EOFError:
+        pass
+
+
+def status(controller: Controller):
     state = controller.status()
-    item("power plan", state["plan"])
-    item("game mode", state["game_mode"])
-    item("capture", state["capture"])
-    item("fortnite", "running" if state["game_running"] else "not running")
-    item("saved state", state["saved_state"])
-    line()
-    line("    results depend on hardware, thermals and the game settings.")
-    line()
+    header("status")
+    for label, value in (
+        ("fortnite", "running" if state["game_running"] else "not running"),
+        ("game mode", state["game_mode"]), ("capture", state["capture"]),
+        ("cpu scheduler", state["scheduler"]), ("power plan", state["plan_name"]),
+        ("gpu scheduling", state["hags"]),
+        ("restore point", state["saved_state"]),
+    ):
+        say(f"{label:<17} {value}")
+    say()
 
 
-def show_preview(controller: Controller, preset: str, features: set[str] | None = None, game_exe: str | None = None):
-    header()
-    line(f"    {preset} / preview")
-    line()
-    for value in controller.preview(preset, features, game_exe):
-        line("    " + value)
-    line("    restore         previous values are saved before changes")
-    line()
+def scan(controller: Controller):
+    from framehold_audit import analyze_inventory, collect_inventory, summarize_inventory
+    header("system scan")
+    say("reading windows inventory. no settings are changed.")
+    data = collect_inventory()
+    for line in summarize_inventory(data):
+        say(line)
+    say()
+    for index, item in enumerate(analyze_inventory(data, controller.status()), 1):
+        say(f"{index:02}  {item['title']}")
+        say(item["detail"], "    ")
+    say()
+    say("driver versions are inventory, not a claim that a newer driver exists.")
 
 
-def show_messages(messages: list[str]):
-    line()
-    for message in messages:
-        line("    " + message)
-    line()
-
-
-def select() -> str:
+def latency(controller: Controller, region: str = "eu"):
+    from framehold_audit import collect_inventory, measure_ping
+    header("input lag")
+    data = collect_inventory()
+    say("01  input device")
+    say("polling rate belongs to device firmware and vendor software. framehold does not overclock usb devices.", "    ")
+    say("02  render queue")
+    say("fortnite supports nvidia reflex. when enabled, reflex overrides driver ultra low latency; framehold does not overwrite nvidia profile inspector.", "    ")
+    say("03  display")
+    say("refresh and sync affect frame delivery. your game resolution and render scale stay unchanged.", "    ")
+    say("04  network")
+    networks = data.get("net") or []
+    if isinstance(networks, dict):
+        networks = [networks]
+    if any("wi-fi" in str(item.get("Name", "")).lower() for item in networks if isinstance(item, dict)):
+        say("wi-fi is active; radio interference can increase jitter.", "    ")
     try:
-        return input("    select  ").strip().lower()
-    except EOFError:
-        return "00"
+        result = measure_ping(region)
+        if result["received"]:
+            say(f"{region} icmp  {result['received']}/{result['sent']} replies; median {result['median_ms']:.1f} ms; spread {result['spread_ms']:.1f} ms", "    ")
+        else:
+            say("icmp did not reply; this does not prove fortnite is unreachable.", "    ")
+    except (RuntimeError, OSError, subprocess.TimeoutExpired):
+        say("network probe unavailable; no network changes made.", "    ")
+    say("icmp is a route baseline, not in-game input lag. tcp tuning is not a proven fortnite input-lag control.", "    ")
 
 
-def confirmed() -> bool:
-    try:
-        return input("    apply? [y/n]  ").strip().lower() == "y"
-    except EOFError:
-        return False
+def controls():
+    header("choose controls")
+    for index, (_, title, detail) in enumerate(CONTROLS, 1):
+        say(f"{index}  {title}")
+        say(detail, "    ")
+        say()
+    say("game files and in-game settings are never changed.")
 
 
-def show_menu(controller: Controller):
-    header()
-    if shutil.get_terminal_size((100, 30)).columns < 88:
-        line("    01   overview")
-        line("    02   balanced")
-        line("    03   competitive")
-        line("    04   restore")
-        line("    05   focus game")
-        line("    06   custom controls")
-        line("    00   exit")
-        line()
+def choose_controls(raw: str) -> set[str]:
+    entries = {token.strip() for token in raw.replace(" ", ",").split(",") if token.strip()}
+    valid = {str(index): key for index, (key, _, _) in enumerate(CONTROLS, 1)}
+    if not entries or entries - set(valid):
+        raise TweakError("choose one or more control numbers")
+    return {valid[token] for token in entries}
+
+
+def review_apply(controller: Controller, features: set[str], path: str | None, backup: bool):
+    header("review changes")
+    for line in controller.preview("competitive", features, path):
+        say(line)
+    say()
+    if backup:
+        say("a restore point is stored before changes. only one saved session can be active.")
+    else:
+        say("warning: no restore point will be retained. one-click restore will be unavailable for these changes.")
+    if ask("type apply") != "apply":
+        say("cancelled")
         return
-    state = controller.status()
-    plan = {"381b4222-f694-41f0-9685-ff5bb260df2e": "balanced", HIGH_PERFORMANCE: "high performance"}.get(state["plan"], "custom")
-    rows = [
-        ("session / overview", "menu / actions"),
-        ("", ""),
-        (f"power plan   {plan}", "01   overview"),
-        (f"game mode    {state['game_mode']}", "02   balanced"),
-        (f"capture      {state['capture']}", "03   competitive"),
-        (f"fortnite     {'running' if state['game_running'] else 'not running'}", "04   restore"),
-        (f"saved state  {state['saved_state']}", "05   focus game"),
-        ("", "06   custom controls"),
-        ("", "00   exit"),
-    ]
-    for left, right in rows:
-        line(f"    {left:<39} {right}")
-    line()
+    if not backup and ask("type no-backup to confirm") != "no-backup":
+        say("cancelled")
+        return
+    for line in controller.apply("competitive", features, path, backup=backup):
+        say(line)
+
+
+def faq():
+    header("faq")
+    answers = (
+        ("who owns framehold?", "owned and maintained by maximkochergin. independent of epic games, microsoft and nvidia."),
+        ("will this guarantee more fps?", "no. a control matters only when its bottleneck is present. compare measured frame times in the same scene."),
+        ("will it change my fortnite graphics?", "no. files, resolution, render scale and visuals are left as they are."),
+        ("will anti-cheat ban me?", "framehold does not inject, alter protected files or memory, or bypass anti-cheat. no third party can guarantee an anti-cheat decision."),
+        ("does it conflict with nvidia profile inspector?", "framehold never writes nvidia driver profiles. its gpu control uses only the windows per-app preference."),
+        ("what does no backup mean?", "the change is rolled back if applying fails, but the restore point is removed after success. later reversal is manual."),
+        ("why no timer or tcp speed hack?", "microsoft documents unused or clamped registry values. blind timer and network changes can cause instability without proven game benefit."),
+        ("how do i prove a change helped?", "export a fortnite csv from presentmon, then use benchmark before and after one control in the same scene."),
+    )
+    for question, answer in answers:
+        say(question)
+        say(answer, "    ")
+        say()
+
+
+def benchmark(path: str):
+    from framehold_benchmark import analyze_csv
+    result = analyze_csv(path)
+    header("benchmark / presentmon csv")
+    say(f"frames             {result['frames']}")
+    say(f"average fps        {result['average_fps']:.1f}")
+    say(f"median frame       {result['median_ms']:.2f} ms")
+    say(f"p95 frame          {result['p95_ms']:.2f} ms")
+    say(f"p99 frame          {result['p99_ms']:.2f} ms")
+    if result["cpu_busy_ms"] is not None:
+        say(f"average cpu busy   {result['cpu_busy_ms']:.2f} ms")
+    if result["gpu_busy_ms"] is not None:
+        say(f"average gpu busy   {result['gpu_busy_ms']:.2f} ms")
+    if result["pc_latency_ms"] is not None:
+        say(f"median pc latency  {result['pc_latency_ms']:.2f} ms")
+    say("these are presentation metrics, not a guaranteed click-to-photon latency measurement.")
 
 
 def menu(controller: Controller):
     while True:
-        show_menu(controller)
-        choice = select().lstrip("0") or "0"
-        try:
-            if choice == "0":
-                return
-            if choice == "1":
-                show_status(controller)
-            elif choice in ("2", "3"):
-                preset = "balanced" if choice == "2" else "competitive"
-                show_preview(controller, preset)
-                if confirmed():
-                    show_messages(controller.apply(preset))
-            elif choice == "4":
-                show_messages(controller.restore())
-            elif choice == "5":
-                show_messages(controller.backend.focus_game())
-            elif choice == "6":
-                line("    controls: game-mode, capture, power, gpu")
-                try:
-                    raw = input("    select (comma separated)  ").strip().lower()
-                    features = {part.strip() for part in raw.split(",")}
-                    path = input("    fortnite exe path (enter to detect)  ").strip() if "gpu" in features else None
-                except EOFError:
-                    return
-                show_preview(controller, "competitive", features, path or None)
-                if confirmed():
-                    show_messages(controller.apply("competitive", features, path or None))
-            else:
-                line("    unknown choice")
-        except (TweakError, OSError, ValueError) as error:
-            line("    " + str(error).lower())
-        line()
-        try:
-            input("    enter to continue  ")
-        except EOFError:
+        header("home")
+        for line in (
+            "1  scan my pc       find bottlenecks in this setup",
+            "2  tune             select and explain controls",
+            "3  input lag        device, rendering, display, network",
+            "4  restore          return to the saved state",
+            "5  faq              ownership and safety",
+            "6  status           current windows settings",
+            "7  focus game       temporary process priority",
+            "8  benchmark        analyze a presentmon csv",
+            "0  exit",
+        ):
+            say(line)
+        selected = ask()
+        if selected == "0":
             return
+        try:
+            if selected == "1":
+                scan(controller)
+            elif selected == "2":
+                controls()
+                raw = ask("numbers, for example 1,2,4")
+                if raw == "0":
+                    continue
+                features = choose_controls(raw)
+                path = (ask_path("fortnite exe path, or enter to detect") or None) if "gpu" in features else None
+                backup = ask("keep a restore point? [y/n]") != "n"
+                review_apply(controller, features, path, backup)
+            elif selected == "3":
+                latency(controller)
+            elif selected == "4":
+                header("restore")
+                if ask("type restore") == "restore":
+                    for line in controller.restore():
+                        say(line)
+            elif selected == "5":
+                faq()
+            elif selected == "6":
+                status(controller)
+            elif selected == "7":
+                header("focus game")
+                say("above-normal cpu priority until fortnite exits. windows may deny access.")
+                if ask("type focus") == "focus":
+                    for line in controller.backend.focus_game():
+                        say(line)
+            elif selected == "8":
+                path = ask_path("presentmon csv path")
+                if path:
+                    benchmark(path)
+            else:
+                say("unknown choice")
+        except (TweakError, OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+            say("error: " + str(error))
+        pause()
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="framehold", description="quiet tools for a steadier fortnite session")
-    parser.add_argument("--action", choices=("menu", "status", "preview", "apply", "restore", "focus"), default="menu")
+    parser = argparse.ArgumentParser(prog="framehold", description="windows session controls for fortnite")
+    parser.add_argument("--action", choices=("menu", "scan", "latency", "benchmark", "status", "preview", "apply", "restore", "focus", "faq"), default="menu")
     parser.add_argument("--preset", choices=("balanced", "competitive"), default="balanced")
-    parser.add_argument("--features", metavar="controls", help="comma-separated controls: game-mode,capture,power,gpu")
-    parser.add_argument("--game-exe", metavar="path", help="full fortnite executable path for the gpu control")
+    parser.add_argument("--features", metavar="controls", help="comma-separated: game-mode,capture,power,gpu,mmcss")
+    parser.add_argument("--game-exe", metavar="path", help="full fortnite executable path for gpu preference")
+    parser.add_argument("--csv", metavar="path", help="presentmon csv path for benchmark analysis")
+    parser.add_argument("--region", choices=("eu", "nae", "nac", "naw"), default="eu")
+    parser.add_argument("--no-backup", action="store_true", help="discard restore point after a successful change")
+    parser.add_argument("--accept-no-backup", action="store_true", help="acknowledge no-backup warning for this run")
     parser.add_argument("--version", action="version", version="framehold " + VERSION)
     args = parser.parse_args(argv)
-    features = {part.strip() for part in args.features.lower().split(",")} if args.features else None
     if os.name != "nt":
-        line("    framehold requires windows")
+        say("framehold requires windows")
         return 1
     from framehold_windows import RegistryStore, WindowsBackend
-
     try:
         backend = WindowsBackend()
         controller = Controller(backend, RegistryStore(backend.owner_sid))
+        features = {part.strip() for part in args.features.lower().split(",")} if args.features else None
         if args.action == "menu":
             menu(controller)
+        elif args.action == "scan":
+            scan(controller)
+        elif args.action == "latency":
+            latency(controller, args.region)
+        elif args.action == "benchmark":
+            if not args.csv:
+                raise TweakError("pass --csv with a presentmon export")
+            benchmark(args.csv)
         elif args.action == "status":
-            show_status(controller)
+            status(controller)
+        elif args.action == "faq":
+            faq()
         elif args.action == "preview":
-            show_preview(controller, args.preset, features, args.game_exe)
+            for line in controller.preview(args.preset, features, args.game_exe):
+                say(line)
         elif args.action == "apply":
-            show_preview(controller, args.preset, features, args.game_exe)
-            show_messages(controller.apply(args.preset, features, args.game_exe))
+            if args.no_backup:
+                say("warning: no restore point will be retained after success.")
+                if not args.accept_no_backup:
+                    raise TweakError("pass --accept-no-backup to confirm this run")
+            for line in controller.preview(args.preset, features, args.game_exe):
+                say(line)
+            for line in controller.apply(args.preset, features, args.game_exe, backup=not args.no_backup):
+                say(line)
         elif args.action == "restore":
-            show_messages(controller.restore())
-        elif args.action == "focus":
-            show_messages(backend.focus_game())
+            for line in controller.restore():
+                say(line)
+        else:
+            for line in backend.focus_game():
+                say(line)
         return 0
-    except (TweakError, OSError, ValueError) as error:
-        line("    error: " + str(error).lower())
+    except (TweakError, OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        say("error: " + str(error))
         return 1
 
 

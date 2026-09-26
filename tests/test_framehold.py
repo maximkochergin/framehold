@@ -23,6 +23,7 @@ class FakeBackend:
         self.game_path = r"C:\Games\FortniteGame\Binaries\Win64\FortniteClient-Win64-Shipping.exe"
         self.created = set()
         self.fail_capture_second = False
+        self.mmcss = {"exists": True, "value": 20, "kind": "dword"}
 
     def check_account(self):
         self.checked += 1
@@ -55,6 +56,18 @@ class FakeBackend:
 
     def get_capture(self):
         return copy.deepcopy(self.capture)
+
+    def get_mmcss(self):
+        return self.mmcss.copy()
+
+    def get_hags(self):
+        return "system default or unsupported"
+
+    def set_mmcss(self, value):
+        self.mmcss = {"exists": True, "value": value, "kind": "dword"}
+
+    def remove_mmcss(self):
+        self.mmcss = {"exists": False, "value": None, "kind": None}
 
     def set_capture_one(self, index, value):
         if index == 1 and value == 0 and self.fail_capture_second:
@@ -195,6 +208,17 @@ class ControllerTests(unittest.TestCase):
     def test_invalid_feature_does_not_save_state(self):
         with self.assertRaisesRegex(TweakError, "supported controls"):
             self.controller.apply("competitive", {"render-scale"})
+        self.assertIsNone(self.store.read())
+
+    def test_scheduler_round_trip(self):
+        self.controller.apply("competitive", {"mmcss"})
+        self.assertEqual(self.backend.mmcss["value"], 10)
+        self.controller.restore()
+        self.assertEqual(self.backend.mmcss["value"], 20)
+
+    def test_no_backup_discards_snapshot_after_success(self):
+        self.controller.apply("balanced", {"capture"}, backup=False)
+        self.assertTrue(all(x["value"] == 0 for x in self.backend.capture))
         self.assertIsNone(self.store.read())
 
     def test_apply_failure_rolls_back(self):
